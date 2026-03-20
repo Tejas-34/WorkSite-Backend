@@ -68,6 +68,14 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = ('id', 'google_id', 'oauth_provider', 'is_oauth_complete', 'created_at')
 
 
+class UserProfileSerializer(serializers.ModelSerializer):
+    """Serializer for authenticated profile updates"""
+
+    class Meta:
+        model = User
+        fields = ('full_name', 'city')
+
+
 class UserListSerializer(serializers.ModelSerializer):
     """Serializer for admin user list"""
     

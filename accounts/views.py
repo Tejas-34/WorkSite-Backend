@@ -1,15 +1,17 @@
-from rest_framework import status, generics, viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.contrib.auth import authenticate, login, logout, get_user_model
 from django.conf import settings
+from django.views.decorators.csrf import ensure_csrf_cookie
 from .serializers import (
     UserRegistrationSerializer, 
     UserLoginSerializer,
     OAuthCompleteSerializer,
     UserSerializer,
-    UserListSerializer
+    UserListSerializer,
+    UserProfileSerializer,
 )
 from .permissions import IsAdmin
 import requests
@@ -54,6 +56,16 @@ def login_view(request):
                 'error': 'Invalid credentials'
             }, status=status.HTTP_401_UNAUTHORIZED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@ensure_csrf_cookie
+def csrf_view(request):
+    """Set CSRF cookie for SPA clients"""
+    return Response({
+        'message': 'CSRF cookie set'
+    }, status=status.HTTP_200_OK)
 
 
 @api_view(['GET'])
@@ -194,6 +206,20 @@ def logout_view(request):
     return Response({
         'message': 'Logout successful'
     }, status=status.HTTP_200_OK)
+
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def profile_view(request):
+    """Update the authenticated user's profile"""
+    serializer = UserProfileSerializer(request.user, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response({
+            'message': 'Profile updated successfully',
+            'user': UserSerializer(request.user).data
+        }, status=status.HTTP_200_OK)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class UserViewSet(viewsets.ModelViewSet):

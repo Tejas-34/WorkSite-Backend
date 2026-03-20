@@ -4,21 +4,19 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
 from django.db.models import F
-from django.shortcuts import get_object_or_404
 from .models import Job, Application
 from .serializers import (
     JobCreateSerializer,
     JobListSerializer,
-    ApplicationCreateSerializer,
     ApplicationSerializer,
     ApplicationStatusUpdateSerializer
 )
-from accounts.permissions import IsWorker, IsEmployer, IsEmployerOrAdmin, IsOwnerOrAdmin
+from accounts.permissions import IsWorker, IsEmployer, IsEmployerOrAdmin
 
 
 class JobViewSet(viewsets.ModelViewSet):
     """ViewSet for job management"""
-    queryset = Job.objects.select_related('employer').all()
+    queryset = Job.objects.select_related('employer').prefetch_related('applications__worker').all()
     permission_classes = [IsAuthenticated]
     
     def get_serializer_class(self):
@@ -38,27 +36,24 @@ class JobViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filter queryset based on query parameters"""
         queryset = super().get_queryset()
-        
-        # Filter by status
+
+        user = self.request.user
         status_filter = self.request.query_params.get('status')
         if status_filter:
             queryset = queryset.filter(status=status_filter)
-        else:
-            # Default to showing only open jobs
-            queryset = queryset.filter(status='open')
-        
-        # Filter by city
+        elif user.role == 'worker':
+            queryset = queryset.filter(status='open') | queryset.filter(applications__worker=user)
+
         city = self.request.query_params.get('city')
         if city:
             queryset = queryset.filter(employer__city=city)
-        
-        # Filter by employer (for employer's own jobs)
-        if self.request.user.role == 'employer':
+
+        if user.role == 'employer':
             my_jobs = self.request.query_params.get('my_jobs')
             if my_jobs == 'true':
-                queryset = queryset.filter(employer=self.request.user)
-        
-        return queryset.order_by('-created_at')
+                queryset = queryset.filter(employer=user)
+
+        return queryset.distinct().order_by('-created_at')
     
     def perform_create(self, serializer):
         """Create job with current user as employer"""
@@ -151,7 +146,7 @@ class JobViewSet(viewsets.ModelViewSet):
 
 
 @api_view(['PUT'])
-@permission_classes([IsEmployer])
+@permission_classes([IsEmployerOrAdmin])
 def update_application_status(request):
     """Update application status (accept/reject)"""
     application_id = request.data.get('application_id')
@@ -173,7 +168,7 @@ def update_application_status(request):
             )
             
             # Check if user is the job employer
-            if application.job.employer != request.user:
+            if application.job.employer != request.user and request.user.role != 'admin':
                 return Response({
                     'error': 'You do not have permission to modify this application'
                 }, status=status.HTTP_403_FORBIDDEN)
@@ -233,7 +228,7 @@ def update_application_status(request):
 
 
 @api_view(['DELETE'])
-@permission_classes([IsEmployer])
+@permission_classes([IsEmployerOrAdmin])
 def remove_worker_from_job(request, job_id, worker_id):
     """Remove a worker from a job"""
     try:
@@ -241,7 +236,7 @@ def remove_worker_from_job(request, job_id, worker_id):
             job = Job.objects.select_for_update().get(pk=job_id)
             
             # Check if user is the job employer
-            if job.employer != request.user:
+            if job.employer != request.user and request.user.role != 'admin':
                 return Response({
                     'error': 'You do not have permission to modify this job'
                 }, status=status.HTTP_403_FORBIDDEN)
