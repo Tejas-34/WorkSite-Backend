@@ -7,11 +7,16 @@ A Django REST Framework backend for the WorkSite construction workforce job port
 - **Three User Roles**: Worker, Employer, and Admin
 - **Dual Authentication**: Standard email/password and Google OAuth 2.0
 - **Job Management**: Create, list, and delete job postings
+- **Advanced Job Filters**: Filter by employer city, site city, wage range, and required skill
 - **Application System**: One-click job applications with atomic slot filling
-- **Auto-closure**: Jobs automatically close when all positions are filled
-- **Race Condition Prevention**: Atomic operations using Django F() expressions
-- **Location Filtering**: Filter jobs by city
-- **Admin Panel**: Full admin interface for user and job management
+- **Task Timeline**: Jobs now support start dates, deadlines, days remaining, and completion marking
+- **Worker History**: Workers can fetch accepted ongoing/completed tasks plus co-worker details
+- **Attendance Tracking**: Employers can record attendance for accepted workers
+- **Worker Calendar**: Workers can block dates and add future availability/planning entries
+- **Ratings and Feedback**: Employers and workers can review each other after accepted work
+- **Verification and Map Data**: User profiles and job sites support verification details plus lat/long coordinates
+- **Dashboard Summary**: Worker and employer summary metrics endpoint
+- **Admin Panel**: Full admin interface for user, job, attendance, review, and calendar management
 - **API Documentation**: Swagger UI at `/api/docs/`
 
 ## Tech Stack
@@ -99,6 +104,7 @@ The API will be available at `http://localhost:8000/api/`
 | POST | `/api/auth/login` | Login user | No |
 | POST | `/api/auth/logout` | Logout user | Yes |
 | GET | `/api/auth/status` | Check auth status | Yes |
+| PUT | `/api/auth/profile` | Update profile, verification, and coordinates | Yes |
 | GET | `/api/auth/google` | Initiate Google OAuth | No |
 | GET | `/api/auth/google/callback` | OAuth callback | No |
 | POST | `/api/auth/google/complete` | Complete OAuth profile | Yes |
@@ -119,14 +125,27 @@ The API will be available at `http://localhost:8000/api/`
 | DELETE | `/api/jobs/{id}/` | Delete job | Employer/Admin |
 | POST | `/api/jobs/{id}/apply/` | Apply for job | Worker |
 | GET | `/api/jobs/{id}/applications/` | List job applications | Employer/Admin |
+| POST | `/api/jobs/{id}/attendance` | Create/update attendance for accepted worker | Employer/Admin |
+| POST | `/api/jobs/{id}/complete` | Mark a job completed | Employer/Admin |
 
 ### Applications
 
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
 | GET | `/api/applications/my` | Get my applications | Worker |
+| GET | `/api/applications/tasks` | Get accepted ongoing/completed task history | Worker |
+| GET | `/api/applications/tasks/{job_id}` | Get task co-workers and attendance | Worker |
 | PUT | `/api/applications/status` | Update application status | Employer |
 | DELETE | `/api/jobs/{job_id}/applications/{worker_id}` | Remove worker | Employer |
+
+### Calendar / Reviews / Dashboard
+
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| GET/POST | `/api/calendar/` | List or create worker calendar blocks | Worker |
+| PUT/PATCH/DELETE | `/api/calendar/{id}/` | Update or delete worker calendar entry | Worker |
+| GET/POST | `/api/reviews/` | List or create reviews | Yes |
+| GET | `/api/dashboard/summary` | Role-aware worker/employer summary metrics | Yes |
 
 ## Query Parameters
 
@@ -134,6 +153,10 @@ The API will be available at `http://localhost:8000/api/`
 
 - `status`: Filter by job status (`open` or `closed`)
 - `city`: Filter by employer city
+- `site_city`: Filter by site city
+- `min_wage`: Minimum daily wage
+- `max_wage`: Maximum daily wage
+- `skill`: Match a required skill
 - `my_jobs`: Set to `true` to see only your posted jobs (employers only)
 
 ## Request/Response Examples
@@ -150,7 +173,10 @@ Content-Type: application/json
   "password2": "securepass123",
   "full_name": "John Doe",
   "role": "worker",
-  "city": "Mumbai"
+  "city": "Mumbai",
+  "phone_number": "9999999999",
+  "verification_document_type": "aadhar",
+  "verification_document_id": "1234-5678-9012"
 }
 ```
 
@@ -165,7 +191,14 @@ Authorization: Session
   "title": "Construction Worker Needed",
   "description": "Looking for experienced workers",
   "daily_wage": 800.00,
-  "required_workers": 5
+  "required_workers": 5,
+  "skills_required": ["masonry", "concrete"],
+  "site_address": "Andheri East Site",
+  "site_city": "Mumbai",
+  "site_latitude": 19.119700,
+  "site_longitude": 72.846420,
+  "start_date": "2026-04-01",
+  "deadline": "2026-04-15"
 }
 ```
 
@@ -196,6 +229,11 @@ Authorization: Session
 - full_name
 - role (worker/employer/admin)
 - city
+- phone_number
+- bio
+- verification_document_type / verification_document_id
+- is_verified
+- latitude / longitude
 - google_id (for OAuth)
 - oauth_provider
 - is_oauth_complete
@@ -208,6 +246,9 @@ Authorization: Session
 - daily_wage
 - required_workers
 - filled_slots (auto-incremented)
+- skills_required
+- site_address / site_city / site_latitude / site_longitude
+- start_date / deadline / completed_at
 - status (open/closed - auto-managed)
 
 ### Application
@@ -215,6 +256,26 @@ Authorization: Session
 - worker (FK to User)
 - status (pending/accepted/rejected)
 - Unique constraint on (job, worker)
+
+### WorkerAvailability
+- worker
+- title
+- start_date / end_date
+- is_blocked
+- notes
+
+### AttendanceRecord
+- application
+- date
+- status
+- notes
+
+### Review
+- reviewer
+- reviewee
+- job
+- rating
+- comment
 
 ## Atomic Operations
 

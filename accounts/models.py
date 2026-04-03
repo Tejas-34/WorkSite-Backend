@@ -47,6 +47,15 @@ class User(AbstractUser):
     full_name = models.CharField(max_length=255)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
     city = models.CharField(max_length=100, null=True, blank=True)
+    phone_number = models.CharField(max_length=20, null=True, blank=True)
+    bio = models.TextField(blank=True, default='')
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+
+    # Verification fields
+    verification_document_type = models.CharField(max_length=50, null=True, blank=True)
+    verification_document_id = models.CharField(max_length=100, null=True, blank=True)
+    is_verified = models.BooleanField(default=False)
     
     # OAuth fields
     google_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
