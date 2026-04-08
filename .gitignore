@@ -37,3 +37,6 @@ Thumbs.db
 htmlcov/
 .coverage
 .coverage.*
+__pycache__/
+*.pyc
+db.sqlite3
