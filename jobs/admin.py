@@ -32,7 +32,6 @@ class JobAdmin(admin.ModelAdmin):
         }),
     )
 
-
 @admin.register(Application)
 class ApplicationAdmin(admin.ModelAdmin):
     """Admin interface for Application model"""
