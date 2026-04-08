@@ -170,7 +170,7 @@ def _build_passkey_signup_payload(signup_data):
         'role': role or 'worker',
         'city': city or None,
         'phone_number': phone_number or None,
-        'verification_document_type': (verification_document_type or 'aadhar') if verification_document_id else None,
+        'verification_document_type': (verification_document_type or 'Aadhaar') if verification_document_id else None,
         'verification_document_id': verification_document_id or None,
         'oauth_provider': 'passkey',
         'is_oauth_complete': not requires_completion,
@@ -405,30 +405,35 @@ def passkey_login_options_view(request):
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    user = User.objects.filter(email=serializer.validated_data['email'], is_active=True).first()
-    if user is None:
-        return _passkey_error_response('No active account found for this email.', http_status=status.HTTP_401_UNAUTHORIZED)
+    email = _clean_optional_string(serializer.validated_data.get('email')).lower()
+    user = None
+    options_kwargs = {
+        'rp_id': rp_id,
+        'user_verification': _webauthn_user_verification_setting(),
+    }
+    if email:
+        user = User.objects.filter(email=email, is_active=True).first()
+        if user is None:
+            return _passkey_error_response('No active account found for this email.', http_status=status.HTTP_401_UNAUTHORIZED)
 
-    try:
-        allow_credentials = _credential_descriptors_for_user(user)
-    except (TypeError, ValueError):
-        return _passkey_error_response(
-            'Stored passkey data is invalid for this account.',
-            http_status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
+        try:
+            allow_credentials = _credential_descriptors_for_user(user)
+        except (TypeError, ValueError):
+            return _passkey_error_response(
+                'Stored passkey data is invalid for this account.',
+                http_status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
-    if not allow_credentials:
-        return _passkey_error_response('No passkey registered for this account.')
+        if not allow_credentials:
+            return _passkey_error_response('No passkey registered for this account.')
 
-    options = generate_authentication_options(
-        rp_id=rp_id,
-        allow_credentials=allow_credentials,
-        user_verification=_webauthn_user_verification_setting(),
-    )
+        options_kwargs['allow_credentials'] = allow_credentials
+
+    options = generate_authentication_options(**options_kwargs)
     options_payload = json.loads(options_to_json(options))
 
     request.session[PASSKEY_LOGIN_STATE_KEY] = {
-        'user_id': user.id,
+        'user_id': user.id if user else None,
         'challenge': options_payload['challenge'],
         'issued_at': timezone.now().timestamp(),
     }
@@ -601,11 +606,15 @@ def passkey_login_verify_view(request):
     if not credential_id:
         return _passkey_error_response('Credential id is required.')
 
-    passkey_credential = PasskeyCredential.objects.select_related('user').filter(
+    passkey_queryset = PasskeyCredential.objects.select_related('user').filter(
         credential_id=credential_id,
-        user_id=state.get('user_id'),
         user__is_active=True,
-    ).first()
+    )
+    state_user_id = state.get('user_id')
+    if state_user_id is not None:
+        passkey_queryset = passkey_queryset.filter(user_id=state_user_id)
+
+    passkey_credential = passkey_queryset.first()
     if passkey_credential is None:
         return _passkey_error_response('Passkey login failed.', http_status=status.HTTP_401_UNAUTHORIZED)
 

@@ -202,7 +202,12 @@ class PasskeySignupOptionsSerializer(serializers.Serializer):
 class PasskeyLoginOptionsSerializer(serializers.Serializer):
     """Serializer for starting passkey login ceremony."""
 
-    email = serializers.EmailField(required=True)
+    email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
+
+    def validate_email(self, value):
+        if value in (None, ''):
+            return ''
+        return value.strip().lower()
 
 
 class PasskeyCredentialVerifySerializer(serializers.Serializer):

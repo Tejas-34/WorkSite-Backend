@@ -274,6 +274,27 @@ class AccountFeatureTests(APITestCase):
         self.assertIn('publicKey', response.data)
         self.assertIn('challenge', response.data['publicKey'])
 
+    def test_passkey_login_options_without_email_returns_discoverable_options(self):
+        user = User.objects.create_user(
+            email='passkey-login-picker@test.com',
+            full_name='Passkey Picker',
+            role='worker',
+        )
+        PasskeyCredential.objects.create(
+            user=user,
+            credential_id=self._to_base64url(b'cred-login-picker'),
+            public_key=self._to_base64url(b'pubkey-login-picker'),
+            sign_count=1,
+            transports=['internal'],
+        )
+
+        response = self.client.post('/api/auth/passkey/login/options', {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('publicKey', response.data)
+        self.assertIn('challenge', response.data['publicKey'])
+        self.assertFalse(response.data['publicKey'].get('allowCredentials'))
+
     @patch('accounts.views.verify_authentication_response')
     def test_passkey_login_verify_updates_sign_count(self, mock_verify_authentication):
         mock_verify_authentication.return_value = Mock(new_sign_count=8)
@@ -309,6 +330,40 @@ class AccountFeatureTests(APITestCase):
         self.assertEqual(verify_response.data['requires_completion'], True)
         passkey.refresh_from_db()
         self.assertEqual(passkey.sign_count, 8)
+
+    @patch('accounts.views.verify_authentication_response')
+    def test_passkey_login_verify_without_email_updates_sign_count(self, mock_verify_authentication):
+        mock_verify_authentication.return_value = Mock(new_sign_count=11)
+        user = User.objects.create_user(
+            email='passkey-login-picker-verify@test.com',
+            full_name='Passkey Picker Verify',
+            role='worker',
+            oauth_provider='passkey',
+            is_oauth_complete=True,
+        )
+        credential_id = self._to_base64url(b'cred-login-picker-verify')
+        passkey = PasskeyCredential.objects.create(
+            user=user,
+            credential_id=credential_id,
+            public_key=self._to_base64url(b'pubkey-login-picker-verify'),
+            sign_count=3,
+            transports=['internal'],
+        )
+
+        options_response = self.client.post('/api/auth/passkey/login/options', {}, format='json')
+        self.assertEqual(options_response.status_code, status.HTTP_200_OK)
+
+        verify_response = self.client.post('/api/auth/passkey/login/verify', {
+            'credential': {
+                'id': credential_id,
+                'response': {},
+            },
+        }, format='json')
+
+        self.assertEqual(verify_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(verify_response.data['requires_completion'], False)
+        passkey.refresh_from_db()
+        self.assertEqual(passkey.sign_count, 11)
 
     def test_passkey_enroll_options_requires_authentication(self):
         response = self.client.post('/api/auth/passkey/enroll/options', {}, format='json')
