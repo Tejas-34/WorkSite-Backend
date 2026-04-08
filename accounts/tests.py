@@ -5,9 +5,9 @@ from rest_framework.test import APITestCase
 from unittest.mock import patch, Mock
 from django.test.utils import override_settings
 from .models import PasskeyCredential
+from urllib.parse import unquote
 
 User = get_user_model()
-
 
 class AccountFeatureTests(APITestCase):
     @staticmethod
@@ -23,15 +23,16 @@ class AccountFeatureTests(APITestCase):
             'role': 'worker',
             'city': 'Mumbai',
             'phone_number': '9999999999',
-            'verification_document_type': 'aadhar',
-            'verification_document_id': '1234-5678-9999',
+            'date_of_birth': '1990-01-01',
+            'verification_document_type': 'Aadhaar',
+            'verification_document_id': '123456789012',
         }, format='json')
 
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         user = User.objects.get(email='worker@test.com')
         self.assertEqual(user.phone_number, '9999999999')
-        self.assertEqual(user.verification_document_type, 'aadhar')
-        self.assertEqual(user.verification_document_id, '1234-5678-9999')
+        self.assertEqual(user.verification_document_type, 'Aadhaar')
+        self.assertEqual(user.verification_document_id, '123456789012')
 
     def test_profile_update_supports_location_and_document_fields(self):
         user = User.objects.create_user(
@@ -39,24 +40,21 @@ class AccountFeatureTests(APITestCase):
             password='pass12345',
             full_name='Worker Two',
             role='worker',
+            date_of_birth='1990-01-01',
         )
         self.client.force_authenticate(user)
 
         response = self.client.put('/api/auth/profile', {
             'city': 'Pune',
             'bio': 'Available for site jobs',
-            'latitude': '18.520430',
-            'longitude': '73.856743',
-            'verification_document_type': 'aadhar',
-            'verification_document_id': 'ID-42',
+            'verification_document_type': 'Aadhaar',
+            'verification_document_id': '123456789012',
         }, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         user.refresh_from_db()
         self.assertEqual(user.city, 'Pune')
         self.assertEqual(user.bio, 'Available for site jobs')
-        self.assertEqual(str(user.latitude), '18.520430')
-        self.assertEqual(str(user.longitude), '73.856743')
 
     def test_google_auth_initiate_sets_state_and_returns_url(self):
         response = self.client.get('/api/auth/google')
@@ -70,7 +68,7 @@ class AccountFeatureTests(APITestCase):
         self.assertIn('accounts.google.com/o/oauth2/v2/auth', response['Location'])
         self.assertIn('state=', response['Location'])
 
-    @override_settings(GOOGLE_CLIENT_ID='')
+    @override_settings(GOOGLE_CLIENT_ID='', GOOGLE_OAUTH_SUCCESS_URL='')
     def test_google_auth_initiate_returns_missing_config_details(self):
         response = self.client.get('/api/auth/google?mode=redirect')
         self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
@@ -94,6 +92,8 @@ class AccountFeatureTests(APITestCase):
             password='pass12345',
             full_name='Link Me',
             role='worker',
+            date_of_birth='1990-01-01',
+            is_verified=True,
         )
 
         token_response = Mock()
@@ -114,7 +114,7 @@ class AccountFeatureTests(APITestCase):
 
         initiate = self.client.get('/api/auth/google')
         self.assertEqual(initiate.status_code, status.HTTP_200_OK)
-        state = initiate.data['url'].split('state=', 1)[1].split('&', 1)[0]
+        state = unquote(initiate.data['url'].split('state=', 1)[1].split('&', 1)[0])
 
         response = self.client.get('/api/auth/google/callback', {
             'code': 'dummy-code',
@@ -154,7 +154,7 @@ class AccountFeatureTests(APITestCase):
         self.assertEqual(initiate.status_code, status.HTTP_302_FOUND)
         self.assertIn('accounts.google.com/o/oauth2/v2/auth', initiate['Location'])
 
-        state = initiate['Location'].split('state=', 1)[1].split('&', 1)[0]
+        state = unquote(initiate['Location'].split('state=', 1)[1].split('&', 1)[0])
         callback = self.client.get('/api/auth/google/callback', {
             'code': 'dummy-code',
             'state': state,

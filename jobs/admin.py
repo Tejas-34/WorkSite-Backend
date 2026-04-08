@@ -17,8 +17,7 @@ class JobAdmin(admin.ModelAdmin):
     fieldsets = (
         ('Job Details', {
             'fields': (
-                'employer', 'title', 'description', 'daily_wage', 'skills_required',
-                'site_address', 'site_city', 'site_latitude', 'site_longitude'
+                'site_address', 'site_city'
             )
         }),
         ('Capacity', {

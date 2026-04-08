@@ -38,8 +38,6 @@ class Job(models.Model):
     skills_required = models.JSONField(default=list, blank=True)
     site_address = models.CharField(max_length=255, blank=True, default='')
     site_city = models.CharField(max_length=100, blank=True, default='')
-    site_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    site_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     start_date = models.DateField(null=True, blank=True)
     deadline = models.DateField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)

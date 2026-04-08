@@ -1,0 +1,17 @@
+Creating test database for alias 'default'...
+F
+======================================================================
+FAIL: test_registration_supports_verification_fields (accounts.tests.AccountFeatureTests.test_registration_supports_verification_fields)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/tejas/Documents/FC/Shramik-Setu/backend/accounts/tests.py", line 26, in test_registration_supports_verification_fields
+    self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+AssertionError: 400 != 201 : {'verification_document_id': [ErrorDetail(string='Aadhaar must be exactly 12 digits.', code='invalid')]}
+
+----------------------------------------------------------------------
+Ran 1 test in 0.025s
+
+FAILED (failures=1)
+Destroying test database for alias 'default'...
+Found 1 test(s).
+System check identified no issues (0 silenced).

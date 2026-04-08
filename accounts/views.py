@@ -4,6 +4,12 @@ import json
 from urllib.parse import urlencode
 
 import requests
+
+from rest_framework import status, viewsets
+from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from django.contrib.auth import authenticate, login, logout, get_user_model
 from django.conf import settings
 from django.contrib.auth import authenticate, login, logout, get_user_model
 from django.core import signing
@@ -251,16 +257,22 @@ def login_view(request):
         
         user = authenticate(request, username=email, password=password)
         
-        if user is not None:
-            login(request, user)
-            return Response({
-                'message': 'Login successful',
-                'user': UserSerializer(user).data
-            }, status=status.HTTP_200_OK)
-        else:
-            return Response({
-                'error': 'Invalid credentials'
-            }, status=status.HTTP_401_UNAUTHORIZED)
+        if user is None:
+            # If user exists but is inactive, authenticate returns None
+            existing_user = User.objects.filter(email=email).first()
+            if existing_user and not existing_user.is_active:
+                return Response({'error': 'Your account has been restricted by an administrator.'}, status=status.HTTP_403_FORBIDDEN)
+            return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+            
+        if user.role != 'admin' and not user.is_verified:
+            return Response({'error': 'Account pending admin verification.'}, status=status.HTTP_403_FORBIDDEN)
+            
+        login(request, user)
+        return Response({
+            'message': 'Login successful',
+            'user': UserSerializer(user).data
+        }, status=status.HTTP_200_OK)
+        
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -858,6 +870,24 @@ def google_auth_callback(request):
                 update_fields.append('updated_at')
                 user.save(update_fields=update_fields)
         
+        if not user.is_active:
+            return _oauth_error_response(
+                request,
+                'Your account has been restricted by an administrator.',
+                http_status=status.HTTP_403_FORBIDDEN,
+                code='account_banned',
+                response_mode=response_mode,
+            )
+            
+        if user.is_oauth_complete and user.role != 'admin' and not user.is_verified:
+            return _oauth_error_response(
+                request,
+                'Account pending admin verification.',
+                http_status=status.HTTP_403_FORBIDDEN,
+                code='account_unverified',
+                response_mode=response_mode,
+            )
+            
         # Login user
         login(request, user)
         requires_completion = not user.is_oauth_complete
@@ -991,6 +1021,25 @@ class UserViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
         user.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        """Approve/verify a user"""
+        user = self.get_object()
+        user.is_verified = True
+        user.save(update_fields=['is_verified'])
+        return Response({'message': 'User verified successfully', 'user': UserListSerializer(user).data}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'])
+    def toggle_ban(self, request, pk=None):
+        """Toggle active status (ban/unban) of a user"""
+        user = self.get_object()
+        if user.role == 'admin':
+            return Response({'error': 'Cannot ban an admin.'}, status=status.HTTP_400_BAD_REQUEST)
+        user.is_active = not user.is_active
+        user.save(update_fields=['is_active'])
+        action_name = 'unbanned' if user.is_active else 'banned'
+        return Response({'message': f'User {action_name} successfully', 'user': UserListSerializer(user).data}, status=status.HTTP_200_OK)
 
 
 @api_view(['GET'])

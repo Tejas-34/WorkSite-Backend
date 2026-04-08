@@ -17,7 +17,7 @@ class UserAdmin(admin.ModelAdmin):
         ('Account Information', {
             'fields': (
                 'email', 'password', 'full_name', 'role', 'city',
-                'phone_number', 'bio', 'latitude', 'longitude'
+                'phone_number', 'bio'
             )
         }),
         ('Verification', {

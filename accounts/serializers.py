@@ -2,11 +2,41 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from .models import PasskeyCredential
-
+import re
+from datetime import date
 User = get_user_model()
 
+class UserValidationMixin:
+    def validate_phone_number(self, value):
+        if value and not re.match(r'^\d{10}$', value):
+            raise serializers.ValidationError("Phone number must be exactly 10 digits.")
+        return value
 
-class UserRegistrationSerializer(serializers.ModelSerializer):
+    def validate_date_of_birth(self, value):
+        if value and value >= date.today():
+            raise serializers.ValidationError("Date of birth must be in the past.")
+        return value
+
+    def validate_verification_documents(self, attrs, instance=None):
+        doc_type = attrs.get('verification_document_type')
+        if not doc_type and instance:
+            doc_type = instance.verification_document_type
+            
+        doc_id = attrs.get('verification_document_id')
+        if not doc_id and instance:
+            doc_id = instance.verification_document_id
+            
+        if doc_type and doc_id:
+            if doc_type == 'Aadhaar' and not re.match(r'^\d{12}$', doc_id):
+                raise serializers.ValidationError({'verification_document_id': 'Aadhaar must be exactly 12 digits.'})
+            elif doc_type == 'PAN Card' and not re.match(r'^[a-zA-Z]{5}[0-9]{4}[a-zA-Z]{1}$', doc_id):
+                raise serializers.ValidationError({'verification_document_id': 'Invalid PAN Card format.'})
+            elif doc_type == 'Voter ID' and not re.match(r'^[a-zA-Z]{3}[0-9]{7}$', doc_id):
+                raise serializers.ValidationError({'verification_document_id': 'Invalid Voter ID format.'})
+
+
+
+class UserRegistrationSerializer(UserValidationMixin, serializers.ModelSerializer):
     """Serializer for user registration"""
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
     password2 = serializers.CharField(write_only=True, required=True, label='Confirm Password')
@@ -15,17 +45,19 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         model = User
         fields = (
             'email', 'password', 'password2', 'full_name', 'role', 'city',
-            'phone_number', 'verification_document_type', 'verification_document_id'
+            'phone_number', 'date_of_birth', 'verification_document_type', 'verification_document_id'
         )
         extra_kwargs = {
             'full_name': {'required': True},
-            'role': {'required': True}
+            'role': {'required': True},
+            'date_of_birth': {'required': True}
         }
     
     def validate(self, attrs):
-        """Validate that passwords match"""
-        if attrs['password'] != attrs['password2']:
+        """Validate that passwords match and docs are correct"""
+        if attrs.get('password') != attrs.get('password2'):
             raise serializers.ValidationError({"password": "Password fields didn't match."})
+        self.validate_verification_documents(attrs)
         return attrs
 
     def validate_role(self, value):
@@ -48,19 +80,24 @@ class UserLoginSerializer(serializers.Serializer):
     password = serializers.CharField(required=True, write_only=True)
 
 
-class OAuthCompleteSerializer(serializers.ModelSerializer):
+class OAuthCompleteSerializer(UserValidationMixin, serializers.ModelSerializer):
     """Serializer for completing OAuth profile"""
     
     class Meta:
         model = User
         fields = (
-            'full_name', 'role', 'city', 'phone_number',
+            'full_name', 'role', 'city', 'phone_number', 'date_of_birth',
             'verification_document_type', 'verification_document_id'
         )
         extra_kwargs = {
             'full_name': {'required': True},
-            'role': {'required': True}
+            'role': {'required': True},
+            'date_of_birth': {'required': True}
         }
+
+    def validate(self, attrs):
+        self.validate_verification_documents(attrs, getattr(self, 'instance', None))
+        return attrs
     
     def update(self, instance, validated_data):
         """Update user and mark OAuth as complete"""
@@ -76,6 +113,7 @@ class OAuthCompleteSerializer(serializers.ModelSerializer):
             'verification_document_id',
             instance.verification_document_id,
         )
+        instance.date_of_birth = validated_data.get('date_of_birth', instance.date_of_birth)
         instance.is_oauth_complete = True
         instance.save()
         return instance
@@ -93,8 +131,8 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = (
             'id', 'email', 'full_name', 'role', 'city', 'phone_number', 'bio',
-            'latitude', 'longitude', 'profile_photo', 'google_id', 'oauth_provider',
-            'is_oauth_complete', 'verification_document_type',
+            'profile_photo', 'google_id', 'oauth_provider',
+            'is_oauth_complete', 'date_of_birth', 'verification_document_type',
             'verification_document_id', 'is_verified', 'created_at'
         )
         read_only_fields = (
@@ -103,15 +141,19 @@ class UserSerializer(serializers.ModelSerializer):
         )
 
 
-class UserProfileSerializer(serializers.ModelSerializer):
+class UserProfileSerializer(UserValidationMixin, serializers.ModelSerializer):
     """Serializer for authenticated profile updates"""
 
     class Meta:
         model = User
         fields = (
-            'full_name', 'city', 'phone_number', 'bio', 'latitude', 'longitude',
-            'verification_document_type', 'verification_document_id'
+            'full_name', 'city', 'phone_number', 'bio',
+            'date_of_birth', 'verification_document_type', 'verification_document_id'
         )
+
+    def validate(self, attrs):
+        self.validate_verification_documents(attrs, getattr(self, 'instance', None))
+        return attrs
 
 
 class UserListSerializer(serializers.ModelSerializer):
@@ -121,7 +163,9 @@ class UserListSerializer(serializers.ModelSerializer):
         model = User
         fields = (
             'id', 'email', 'full_name', 'role', 'city', 'phone_number',
-            'is_verified', 'created_at', 'is_active'
+            'is_verified', 'created_at', 'is_active', 'date_of_birth',
+            'verification_document_type', 'verification_document_id',
+            'bio', 'profile_photo'
         )
         read_only_fields = ('id', 'created_at')
 

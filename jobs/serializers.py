@@ -115,7 +115,7 @@ class JobCreateSerializer(serializers.ModelSerializer):
         fields = (
             'title', 'description', 'daily_wage', 'required_workers',
             'skills_required', 'site_address', 'site_city',
-            'site_latitude', 'site_longitude', 'start_date', 'deadline'
+            'start_date', 'deadline'
         )
 
     def validate(self, attrs):
@@ -155,7 +155,7 @@ class JobListSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'employer', 'title', 'description', 'daily_wage',
             'required_workers', 'filled_slots', 'available_slots', 'skills_required',
-            'site_address', 'site_city', 'site_latitude', 'site_longitude',
+            'site_address', 'site_city',
             'start_date', 'deadline', 'completed_at', 'days_remaining', 'status', 'created_at',
             'applicants', 'applied_workers', 'my_application_status'
         )

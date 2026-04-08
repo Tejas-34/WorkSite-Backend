@@ -45,6 +45,12 @@ class User(AbstractUser):
         ('admin', 'Admin'),
     )
     
+    VERIFICATION_CHOICES = (
+        ('Aadhaar', 'Aadhaar'),
+        ('PAN Card', 'PAN Card'),
+        ('Voter ID', 'Voter ID'),
+    )
+    
     # Override username to make email the primary identifier
     username = models.CharField(max_length=150, unique=False, blank=True, null=True)
     email = models.EmailField(unique=True)
@@ -55,11 +61,10 @@ class User(AbstractUser):
     city = models.CharField(max_length=100, null=True, blank=True)
     phone_number = models.CharField(max_length=20, null=True, blank=True)
     bio = models.TextField(blank=True, default='')
-    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    date_of_birth = models.DateField(null=True, blank=True)
 
     # Verification fields
-    verification_document_type = models.CharField(max_length=50, null=True, blank=True)
+    verification_document_type = models.CharField(max_length=50, choices=VERIFICATION_CHOICES, null=True, blank=True)
     verification_document_id = models.CharField(max_length=100, null=True, blank=True)
     is_verified = models.BooleanField(default=False)
     
