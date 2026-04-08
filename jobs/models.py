@@ -1,8 +1,19 @@
 from django.db import models
 from django.conf import settings
+from django import VERSION as DJANGO_VERSION
 from django.core.exceptions import ValidationError
 from django.db.models import Q
 from django.utils import timezone
+
+
+def _reviewer_not_reviewee_constraint():
+    kwargs = {'name': 'reviewer_not_reviewee'}
+    condition = ~Q(reviewer=models.F('reviewee'))
+    if DJANGO_VERSION >= (6, 0):
+        kwargs['condition'] = condition
+    else:
+        kwargs['check'] = condition
+    return models.CheckConstraint(**kwargs)
 
 
 class Job(models.Model):
@@ -185,10 +196,7 @@ class Review(models.Model):
                 fields=['reviewer', 'reviewee', 'job'],
                 name='unique_review_per_job_direction',
             ),
-            models.CheckConstraint(
-                condition=~Q(reviewer=models.F('reviewee')),
-                name='reviewer_not_reviewee',
-            ),
+            _reviewer_not_reviewee_constraint(),
         ]
 
 

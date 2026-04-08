@@ -20,5 +20,6 @@ urlpatterns = [
     path('auth/google/complete', views.oauth_complete_profile, name='oauth-complete'),
     
     # Admin user management
+    path('all-users/', views.all_users_view, name='all-users'),
     path('', include(router.urls)),
 ]

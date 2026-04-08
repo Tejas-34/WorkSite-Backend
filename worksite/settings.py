@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "drf_spectacular",
+    "chat",
 ]
 
 MIDDLEWARE = [
@@ -173,7 +174,7 @@ CORS_ALLOW_CREDENTIALS = True
 
 # CSRF Trusted Origins
 CSRF_TRUSTED_ORIGINS = config(
-    'CORS_ALLOWED_ORIGINS',
+    'CSRF_TRUSTED_ORIGINS',
     default='http://localhost:3000,http://localhost:5173',
     cast=Csv()
 )
@@ -182,6 +183,8 @@ CSRF_TRUSTED_ORIGINS = config(
 GOOGLE_CLIENT_ID = config('GOOGLE_CLIENT_ID', default='')
 GOOGLE_CLIENT_SECRET = config('GOOGLE_CLIENT_SECRET', default='')
 GOOGLE_REDIRECT_URI = config('GOOGLE_REDIRECT_URI', default='http://localhost:8000/api/auth/google/callback')
+GOOGLE_OAUTH_SUCCESS_URL = config('GOOGLE_OAUTH_SUCCESS_URL', default='')
+GOOGLE_OAUTH_ERROR_URL = config('GOOGLE_OAUTH_ERROR_URL', default='')
 
 # Email Configuration
 EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')

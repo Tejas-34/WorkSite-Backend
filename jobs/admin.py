@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Job, Application, AttendanceRecord, WorkerAvailability, Review
+from .models import Job, Application, AttendanceRecord, WorkerAvailability, Review, Certificate
 
 
 @admin.register(Job)
@@ -75,3 +75,17 @@ class ReviewAdmin(admin.ModelAdmin):
     search_fields = (
         'job__title', 'reviewer__full_name', 'reviewee__full_name', 'comment'
     )
+
+
+@admin.register(Certificate)
+class CertificateAdmin(admin.ModelAdmin):
+    list_display = ('certificate_number', 'job', 'recipient', 'document_type', 'issued_at')
+    list_filter = ('document_type', 'issued_at')
+    search_fields = (
+        'certificate_number',
+        'subject_name',
+        'recipient__full_name',
+        'recipient__email',
+        'job__title',
+    )
+    readonly_fields = ('issued_at',)

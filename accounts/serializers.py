@@ -26,12 +26,19 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         if attrs['password'] != attrs['password2']:
             raise serializers.ValidationError({"password": "Password fields didn't match."})
         return attrs
+
+    def validate_role(self, value):
+        if value == 'admin':
+            raise serializers.ValidationError('Admin accounts cannot be created via public registration.')
+        return value
     
     def create(self, validated_data):
         """Create user with validated data"""
         validated_data.pop('password2')
-        user = User.objects.create_user(**validated_data)
-        return user
+        try:
+            return User.objects.create_user(**validated_data)
+        except ValueError as exc:
+            raise serializers.ValidationError({'role': str(exc)})
 
 
 class UserLoginSerializer(serializers.Serializer):
@@ -71,6 +78,11 @@ class OAuthCompleteSerializer(serializers.ModelSerializer):
         instance.is_oauth_complete = True
         instance.save()
         return instance
+
+    def validate_role(self, value):
+        if value == 'admin':
+            raise serializers.ValidationError('Admin role cannot be assigned via OAuth completion.')
+        return value
 
 
 class UserSerializer(serializers.ModelSerializer):

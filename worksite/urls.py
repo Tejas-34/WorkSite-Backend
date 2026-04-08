@@ -24,6 +24,7 @@ urlpatterns = [
     # API endpoints
     path("api/", include('accounts.urls')),
     path("api/", include('jobs.urls')),
+    path("api/messages/", include('chat.urls')),
     
     # API Documentation
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),

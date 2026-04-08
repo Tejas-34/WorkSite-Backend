@@ -65,6 +65,9 @@ SECRET_KEY=your-secret-key-here
 # For Google OAuth (optional)
 GOOGLE_CLIENT_ID=your-client-id
 GOOGLE_CLIENT_SECRET=your-client-secret
+GOOGLE_REDIRECT_URI=http://localhost:8000/api/auth/google/callback
+GOOGLE_OAUTH_SUCCESS_URL=http://localhost:5173/auth/google/success
+GOOGLE_OAUTH_ERROR_URL=http://localhost:5173/auth/google/error
 
 # For PostgreSQL (optional)
 DB_ENGINE=django.db.backends.postgresql
@@ -108,6 +111,11 @@ The API will be available at `http://localhost:8000/api/`
 | GET | `/api/auth/google` | Initiate Google OAuth | No |
 | GET | `/api/auth/google/callback` | OAuth callback | No |
 | POST | `/api/auth/google/complete` | Complete OAuth profile | Yes |
+
+OAuth notes:
+- Use `GET /api/auth/google?mode=redirect&next=/dashboard` for browser redirects (navigate the browser to this endpoint; do not call it via `fetch`).
+- Google OAuth now validates `state` to prevent CSRF and links existing non-admin accounts by email.
+- If OAuth is not configured, `/api/auth/google` returns `503` with `missing_fields` showing exactly what is missing.
 
 ### User Management (Admin Only)
 

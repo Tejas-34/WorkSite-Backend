@@ -19,6 +19,7 @@ urlpatterns = [
     path('jobs/<int:job_id>/complete', views.mark_job_completed, name='mark-job-completed'),
     path('certificates/<int:certificate_id>/download', views.download_certificate, name='download-certificate'),
     path('dashboard/summary', views.dashboard_summary, name='dashboard-summary'),
+    path('calendar/all', views.worker_availability_for_employers, name='worker-availability-all'),
     
     # Job routes (includes apply endpoint as action)
     path('', include(router.urls)),
