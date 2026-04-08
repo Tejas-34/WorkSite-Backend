@@ -5,7 +5,7 @@ A Django REST Framework backend for the WorkSite construction workforce job port
 ## Features
 
 - **Three User Roles**: Worker, Employer, and Admin
-- **Dual Authentication**: Standard email/password and Google OAuth 2.0
+- **Triple Authentication**: Standard email/password, Google OAuth 2.0, and WebAuthn passkeys
 - **Job Management**: Create, list, and delete job postings
 - **Advanced Job Filters**: Filter by employer city, site city, wage range, and required skill
 - **Application System**: One-click job applications with atomic slot filling
@@ -23,7 +23,8 @@ A Django REST Framework backend for the WorkSite construction workforce job port
 
 - **Framework**: Django 5.0+ with Django REST Framework
 - **Database**: PostgreSQL (configurable to SQLite for development)
-- **Authentication**: Session-based with Google OAuth support
+- **Authentication**: Session-based with email/password, Google OAuth, and passkeys
+- **Passkeys**: WebAuthn passkey ceremonies for sign-up and login
 - **API Documentation**: drf-spectacular (Swagger/OpenAPI)
 
 ## Installation
@@ -69,6 +70,13 @@ GOOGLE_REDIRECT_URI=http://localhost:8000/api/auth/google/callback
 GOOGLE_OAUTH_SUCCESS_URL=http://localhost:5173/auth/google/success
 GOOGLE_OAUTH_ERROR_URL=http://localhost:5173/auth/google/error
 
+# For WebAuthn passkeys (optional)
+WEBAUTHN_RP_ID=localhost
+WEBAUTHN_RP_NAME=WorkSite
+WEBAUTHN_ORIGIN=http://localhost:5173
+WEBAUTHN_REQUIRE_USER_VERIFICATION=True
+WEBAUTHN_CHALLENGE_TIMEOUT_SECONDS=300
+
 # For PostgreSQL (optional)
 DB_ENGINE=django.db.backends.postgresql
 DB_NAME=worksite_db
@@ -105,6 +113,15 @@ The API will be available at `http://localhost:8000/api/`
 |--------|----------|-------------|---------------|
 | POST | `/api/auth/register` | Register new user | No |
 | POST | `/api/auth/login` | Login user | No |
+| POST | `/api/auth/passkey/register/options` | Start passkey sign-up ceremony | No |
+| POST | `/api/auth/passkey/register/verify` | Verify passkey sign-up and create account | No |
+| POST | `/api/auth/passkey/complete` | Complete passkey signup profile | Yes |
+| POST | `/api/auth/passkey/enroll/options` | Start passkey enrollment for logged-in user | Yes |
+| POST | `/api/auth/passkey/enroll/verify` | Verify and save passkey for logged-in user | Yes |
+| GET | `/api/auth/passkey/credentials` | List saved passkeys for logged-in user | Yes |
+| DELETE | `/api/auth/passkey/credentials/{id}` | Delete a saved passkey for logged-in user | Yes |
+| POST | `/api/auth/passkey/login/options` | Start passkey login ceremony | No |
+| POST | `/api/auth/passkey/login/verify` | Verify passkey login and create session | No |
 | POST | `/api/auth/logout` | Logout user | Yes |
 | GET | `/api/auth/status` | Check auth status | Yes |
 | PUT | `/api/auth/profile` | Update profile, verification, and coordinates | Yes |
@@ -116,6 +133,14 @@ OAuth notes:
 - Use `GET /api/auth/google?mode=redirect&next=/dashboard` for browser redirects (navigate the browser to this endpoint; do not call it via `fetch`).
 - Google OAuth now validates `state` to prevent CSRF and links existing non-admin accounts by email.
 - If OAuth is not configured, `/api/auth/google` returns `503` with `missing_fields` showing exactly what is missing.
+
+Passkey notes:
+- Passkey APIs return `503` with `missing_fields` when `WEBAUTHN_*` settings are incomplete.
+- Passkey signup uses the same core profile fields as regular registration and still blocks `admin` role via public signup.
+- Passkey signup accepts partial form data; if role/city/phone/verification ID is missing, response includes `requires_completion=true` and user can finish via `/api/auth/passkey/complete`.
+- Logged-in users can enroll passkeys from profile using `/api/auth/passkey/enroll/options` and `/api/auth/passkey/enroll/verify`.
+- Profile passkey management is single-passkey per account: if one exists, enrollment returns `409` until it is deleted.
+- Challenge state is session-bound and expires using `WEBAUTHN_CHALLENGE_TIMEOUT_SECONDS`.
 
 ### User Management (Admin Only)
 
@@ -246,6 +271,14 @@ Authorization: Session
 - oauth_provider
 - is_oauth_complete
 - profile_photo
+
+### PasskeyCredential
+- user (FK to User)
+- credential_id (base64url, unique)
+- public_key (base64url-encoded credential public key)
+- sign_count
+- transports
+- last_used_at
 
 ### Job
 - employer (FK to User)

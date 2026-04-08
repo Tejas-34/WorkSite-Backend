@@ -84,3 +84,27 @@ class User(AbstractUser):
     class Meta:
         db_table = 'users'
         ordering = ['-created_at']
+
+
+class PasskeyCredential(models.Model):
+    """Stores a WebAuthn credential for passkey authentication."""
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='passkey_credentials',
+    )
+    credential_id = models.CharField(max_length=512, unique=True)
+    public_key = models.TextField()
+    sign_count = models.BigIntegerField(default=0)
+    transports = models.JSONField(default=list, blank=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'passkey_credentials'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.email} - {self.credential_id[:24]}"

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import User
+from .models import PasskeyCredential, User
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
@@ -39,3 +39,11 @@ class UserAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+
+
+@admin.register(PasskeyCredential)
+class PasskeyCredentialAdmin(admin.ModelAdmin):
+    list_display = ('user', 'credential_id', 'sign_count', 'last_used_at', 'created_at')
+    search_fields = ('user__email', 'credential_id')
+    list_filter = ('created_at', 'last_used_at')
+    readonly_fields = ('created_at', 'updated_at', 'last_used_at')

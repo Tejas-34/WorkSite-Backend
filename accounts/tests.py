@@ -1,13 +1,19 @@
+import base64
 from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APITestCase
 from unittest.mock import patch, Mock
 from django.test.utils import override_settings
+from .models import PasskeyCredential
 
 User = get_user_model()
 
 
 class AccountFeatureTests(APITestCase):
+    @staticmethod
+    def _to_base64url(value):
+        return base64.urlsafe_b64encode(value).rstrip(b'=').decode('ascii')
+
     def test_registration_supports_verification_fields(self):
         response = self.client.post('/api/auth/register', {
             'email': 'worker@test.com',
@@ -164,3 +170,289 @@ class AccountFeatureTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('url', response.data)
         self.assertIn('accounts.google.com/o/oauth2/v2/auth', response.data['url'])
+
+    def test_passkey_register_options_returns_creation_options(self):
+        response = self.client.post('/api/auth/passkey/register/options', {
+            'email': 'passkey-new@test.com',
+            'full_name': 'Passkey User',
+            'role': 'worker',
+            'city': 'Pune',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('publicKey', response.data)
+        self.assertIn('challenge', response.data['publicKey'])
+
+    @patch('accounts.views.verify_registration_response')
+    def test_passkey_register_verify_creates_user_and_credential(self, mock_verify_registration):
+        mock_verify_registration.return_value = Mock(
+            credential_id=b'cred-register',
+            credential_public_key=b'pubkey-register',
+            sign_count=0,
+        )
+
+        options_response = self.client.post('/api/auth/passkey/register/options', {
+            'email': 'passkey-signup@test.com',
+            'full_name': 'Passkey Signup',
+            'role': 'worker',
+            'city': 'Mumbai',
+            'phone_number': '9999999999',
+            'verification_document_type': 'aadhar',
+            'verification_document_id': 'PASSKEY-ID-1',
+        }, format='json')
+        self.assertEqual(options_response.status_code, status.HTTP_200_OK)
+
+        verify_response = self.client.post('/api/auth/passkey/register/verify', {
+            'credential': {
+                'id': self._to_base64url(b'cred-register'),
+                'response': {
+                    'transports': ['internal'],
+                },
+            },
+        }, format='json')
+
+        self.assertEqual(verify_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(verify_response.data['requires_completion'], False)
+        user = User.objects.get(email='passkey-signup@test.com')
+        credential = PasskeyCredential.objects.get(user=user)
+        self.assertEqual(credential.credential_id, self._to_base64url(b'cred-register'))
+        self.assertEqual(credential.transports, ['internal'])
+        self.assertEqual(user.city, 'Mumbai')
+        self.assertEqual(user.phone_number, '9999999999')
+        self.assertEqual(user.verification_document_id, 'PASSKEY-ID-1')
+        self.assertEqual(user.oauth_provider, 'passkey')
+        self.assertEqual(user.is_oauth_complete, True)
+
+    @patch('accounts.views.verify_registration_response')
+    def test_passkey_register_verify_with_partial_data_requires_completion(self, mock_verify_registration):
+        mock_verify_registration.return_value = Mock(
+            credential_id=b'cred-register-partial',
+            credential_public_key=b'pubkey-register-partial',
+            sign_count=0,
+        )
+
+        options_response = self.client.post('/api/auth/passkey/register/options', {
+            'email': 'passkey-partial@test.com',
+        }, format='json')
+        self.assertEqual(options_response.status_code, status.HTTP_200_OK)
+
+        verify_response = self.client.post('/api/auth/passkey/register/verify', {
+            'credential': {
+                'id': self._to_base64url(b'cred-register-partial'),
+                'response': {
+                    'transports': ['internal'],
+                },
+            },
+        }, format='json')
+
+        self.assertEqual(verify_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(verify_response.data['requires_completion'], True)
+        user = User.objects.get(email='passkey-partial@test.com')
+        self.assertEqual(user.role, 'worker')
+        self.assertEqual(user.oauth_provider, 'passkey')
+        self.assertEqual(user.is_oauth_complete, False)
+
+    def test_passkey_login_options_returns_request_options(self):
+        user = User.objects.create_user(
+            email='passkey-login-options@test.com',
+            full_name='Passkey Login',
+            role='worker',
+        )
+        PasskeyCredential.objects.create(
+            user=user,
+            credential_id=self._to_base64url(b'cred-login-options'),
+            public_key=self._to_base64url(b'pubkey-login-options'),
+            sign_count=1,
+            transports=['internal'],
+        )
+
+        response = self.client.post('/api/auth/passkey/login/options', {
+            'email': 'passkey-login-options@test.com',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('publicKey', response.data)
+        self.assertIn('challenge', response.data['publicKey'])
+
+    @patch('accounts.views.verify_authentication_response')
+    def test_passkey_login_verify_updates_sign_count(self, mock_verify_authentication):
+        mock_verify_authentication.return_value = Mock(new_sign_count=8)
+        user = User.objects.create_user(
+            email='passkey-login-verify@test.com',
+            full_name='Passkey Verify',
+            role='worker',
+            oauth_provider='passkey',
+            is_oauth_complete=False,
+        )
+        credential_id = self._to_base64url(b'cred-login-verify')
+        passkey = PasskeyCredential.objects.create(
+            user=user,
+            credential_id=credential_id,
+            public_key=self._to_base64url(b'pubkey-login-verify'),
+            sign_count=2,
+            transports=['internal'],
+        )
+
+        options_response = self.client.post('/api/auth/passkey/login/options', {
+            'email': 'passkey-login-verify@test.com',
+        }, format='json')
+        self.assertEqual(options_response.status_code, status.HTTP_200_OK)
+
+        verify_response = self.client.post('/api/auth/passkey/login/verify', {
+            'credential': {
+                'id': credential_id,
+                'response': {},
+            },
+        }, format='json')
+
+        self.assertEqual(verify_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(verify_response.data['requires_completion'], True)
+        passkey.refresh_from_db()
+        self.assertEqual(passkey.sign_count, 8)
+
+    def test_passkey_enroll_options_requires_authentication(self):
+        response = self.client.post('/api/auth/passkey/enroll/options', {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_passkey_enroll_options_returns_creation_options_for_authenticated_user(self):
+        user = User.objects.create_user(
+            email='passkey-enroll-options@test.com',
+            full_name='Passkey Enroll',
+            role='worker',
+        )
+        self.client.force_login(user)
+
+        response = self.client.post('/api/auth/passkey/enroll/options', {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('publicKey', response.data)
+        self.assertIn('challenge', response.data['publicKey'])
+        self.assertEqual(response.data['passkey_count'], 0)
+
+    def test_passkey_enroll_options_rejects_when_passkey_exists(self):
+        user = User.objects.create_user(
+            email='passkey-enroll-existing@test.com',
+            full_name='Passkey Existing',
+            role='worker',
+        )
+        PasskeyCredential.objects.create(
+            user=user,
+            credential_id=self._to_base64url(b'cred-enroll-existing'),
+            public_key=self._to_base64url(b'pubkey-enroll-existing'),
+            sign_count=4,
+            transports=['internal'],
+        )
+        self.client.force_login(user)
+
+        response = self.client.post('/api/auth/passkey/enroll/options', {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn('already configured', response.data['error'])
+
+    @patch('accounts.views.verify_registration_response')
+    def test_passkey_enroll_verify_creates_credential_for_authenticated_user(self, mock_verify_registration):
+        mock_verify_registration.return_value = Mock(
+            credential_id=b'cred-enroll',
+            credential_public_key=b'pubkey-enroll',
+            sign_count=3,
+        )
+        user = User.objects.create_user(
+            email='passkey-enroll-verify@test.com',
+            full_name='Passkey Enroll Verify',
+            role='worker',
+        )
+        self.client.force_login(user)
+
+        options_response = self.client.post('/api/auth/passkey/enroll/options', {}, format='json')
+        self.assertEqual(options_response.status_code, status.HTTP_200_OK)
+
+        verify_response = self.client.post('/api/auth/passkey/enroll/verify', {
+            'credential': {
+                'id': self._to_base64url(b'cred-enroll'),
+                'response': {
+                    'transports': ['hybrid'],
+                },
+            },
+        }, format='json')
+        self.assertEqual(verify_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(verify_response.data['passkey_count'], 1)
+
+        credential = PasskeyCredential.objects.get(user=user, credential_id=self._to_base64url(b'cred-enroll'))
+        self.assertEqual(credential.sign_count, 3)
+        self.assertEqual(credential.transports, ['hybrid'])
+
+    def test_passkey_credentials_list_returns_user_credentials(self):
+        user = User.objects.create_user(
+            email='passkey-list@test.com',
+            full_name='Passkey List',
+            role='worker',
+        )
+        other_user = User.objects.create_user(
+            email='passkey-list-other@test.com',
+            full_name='Passkey List Other',
+            role='worker',
+        )
+        credential = PasskeyCredential.objects.create(
+            user=user,
+            credential_id=self._to_base64url(b'cred-list'),
+            public_key=self._to_base64url(b'pubkey-list'),
+            sign_count=1,
+            transports=['internal'],
+        )
+        PasskeyCredential.objects.create(
+            user=other_user,
+            credential_id=self._to_base64url(b'cred-list-other'),
+            public_key=self._to_base64url(b'pubkey-list-other'),
+            sign_count=2,
+            transports=['usb'],
+        )
+        self.client.force_login(user)
+
+        response = self.client.get('/api/auth/passkey/credentials')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['credentials']), 1)
+        self.assertEqual(response.data['credentials'][0]['id'], credential.id)
+
+    def test_passkey_credential_delete_removes_credential(self):
+        user = User.objects.create_user(
+            email='passkey-delete@test.com',
+            full_name='Passkey Delete',
+            role='worker',
+        )
+        credential = PasskeyCredential.objects.create(
+            user=user,
+            credential_id=self._to_base64url(b'cred-delete'),
+            public_key=self._to_base64url(b'pubkey-delete'),
+            sign_count=9,
+            transports=['hybrid'],
+        )
+        self.client.force_login(user)
+
+        response = self.client.delete(f'/api/auth/passkey/credentials/{credential.id}')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['passkey_count'], 0)
+        self.assertFalse(PasskeyCredential.objects.filter(id=credential.id).exists())
+
+    def test_passkey_complete_profile_updates_incomplete_passkey_user(self):
+        user = User.objects.create_user(
+            email='passkey-complete@test.com',
+            full_name='Passkey Complete',
+            role='worker',
+            oauth_provider='passkey',
+            is_oauth_complete=False,
+        )
+        self.client.force_login(user)
+
+        response = self.client.post('/api/auth/passkey/complete', {
+            'role': 'employer',
+            'city': 'Pune',
+            'phone_number': '8888888888',
+            'verification_document_type': 'aadhar',
+            'verification_document_id': 'COMPLETE-42',
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        user.refresh_from_db()
+        self.assertEqual(user.role, 'employer')
+        self.assertEqual(user.city, 'Pune')
+        self.assertEqual(user.phone_number, '8888888888')
+        self.assertEqual(user.verification_document_id, 'COMPLETE-42')
+        self.assertEqual(user.is_oauth_complete, True)

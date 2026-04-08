@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+from .models import PasskeyCredential
 
 User = get_user_model()
 
@@ -123,3 +124,64 @@ class UserListSerializer(serializers.ModelSerializer):
             'is_verified', 'created_at', 'is_active'
         )
         read_only_fields = ('id', 'created_at')
+
+
+class PasskeySignupOptionsSerializer(serializers.Serializer):
+    """Serializer for starting passkey sign-up ceremony."""
+
+    email = serializers.EmailField(required=True)
+    full_name = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    role = serializers.ChoiceField(choices=User.ROLE_CHOICES, required=False)
+    city = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=100)
+    phone_number = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=20)
+    verification_document_type = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        max_length=50,
+    )
+    verification_document_id = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        max_length=100,
+    )
+
+    def validate_role(self, value):
+        if value is None:
+            return value
+        if value == 'admin':
+            raise serializers.ValidationError('Admin accounts cannot be created via public registration.')
+        return value
+
+
+class PasskeyLoginOptionsSerializer(serializers.Serializer):
+    """Serializer for starting passkey login ceremony."""
+
+    email = serializers.EmailField(required=True)
+
+
+class PasskeyCredentialVerifySerializer(serializers.Serializer):
+    """Serializer for passkey attestation/assertion payloads."""
+
+    credential = serializers.JSONField(required=True)
+
+
+class PasskeyCredentialSerializer(serializers.ModelSerializer):
+    """Serializer for listing stored passkeys for an authenticated user."""
+
+    key_hint = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PasskeyCredential
+        fields = (
+            'id',
+            'key_hint',
+            'transports',
+            'last_used_at',
+            'created_at',
+        )
+        read_only_fields = fields
+
+    def get_key_hint(self, obj):
+        return f"{obj.credential_id[:12]}..."

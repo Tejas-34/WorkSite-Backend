@@ -186,6 +186,13 @@ GOOGLE_REDIRECT_URI = config('GOOGLE_REDIRECT_URI', default='http://localhost:80
 GOOGLE_OAUTH_SUCCESS_URL = config('GOOGLE_OAUTH_SUCCESS_URL', default='')
 GOOGLE_OAUTH_ERROR_URL = config('GOOGLE_OAUTH_ERROR_URL', default='')
 
+# WebAuthn / Passkey Configuration
+WEBAUTHN_RP_ID = config('WEBAUTHN_RP_ID', default='localhost')
+WEBAUTHN_RP_NAME = config('WEBAUTHN_RP_NAME', default='WorkSite')
+WEBAUTHN_ORIGIN = config('WEBAUTHN_ORIGIN', default='http://localhost:5173')
+WEBAUTHN_REQUIRE_USER_VERIFICATION = config('WEBAUTHN_REQUIRE_USER_VERIFICATION', default=True, cast=bool)
+WEBAUTHN_CHALLENGE_TIMEOUT_SECONDS = config('WEBAUTHN_CHALLENGE_TIMEOUT_SECONDS', default=300, cast=int)
+
 # Email Configuration
 EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
 EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
